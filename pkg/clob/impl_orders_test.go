@@ -2,11 +2,13 @@ package clob
 
 import (
 	"context"
+	"encoding/hex"
 	"math/big"
 	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 	"github.com/shopspring/decimal"
 
 	"github.com/GoPolymarket/polymarket-go-sdk/v2/pkg/auth"
@@ -14,6 +16,19 @@ import (
 	"github.com/GoPolymarket/polymarket-go-sdk/v2/pkg/transport"
 	"github.com/GoPolymarket/polymarket-go-sdk/v2/pkg/types"
 )
+
+type capturingSigner struct {
+	address common.Address
+	chainID *big.Int
+	domain  *apitypes.TypedDataDomain
+}
+
+func (s *capturingSigner) Address() common.Address { return s.address }
+func (s *capturingSigner) ChainID() *big.Int       { return s.chainID }
+func (s *capturingSigner) SignTypedData(domain *apitypes.TypedDataDomain, types apitypes.Types, message apitypes.TypedDataMessage, primaryType string) ([]byte, error) {
+	s.domain = domain
+	return []byte{1, 2, 3}, nil
+}
 
 func TestOrderManagementMethods(t *testing.T) {
 	signer, _ := auth.NewPrivateKeySigner("0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318", 137)
@@ -238,6 +253,40 @@ func TestSignOrderDefaults(t *testing.T) {
 	}
 }
 
+func TestCreateOrderUsesNegRiskExchangeDomain(t *testing.T) {
+	signer := &capturingSigner{
+		address: common.HexToAddress("0x1111111111111111111111111111111111111111"),
+		chainID: big.NewInt(137),
+	}
+	client := &clientImpl{
+		httpClient: transport.NewClient(&staticDoer{responses: map[string]string{
+			"/neg-risk?token_id=123": `{"neg_risk":true}`,
+			"/order":                 `{"orderID":"o1","status":"live"}`,
+		}}, "http://example"),
+		signer: signer,
+		apiKey: &auth.APIKey{Key: "k1", Secret: "s1", Passphrase: "p1"},
+		cache:  newClientCache(),
+	}
+	order := &clobtypes.Order{
+		Side:        "BUY",
+		TokenID:     types.U256{Int: big.NewInt(123)},
+		MakerAmount: decimal.NewFromInt(10),
+		TakerAmount: decimal.NewFromInt(5),
+		Expiration:  types.U256{Int: big.NewInt(0)},
+	}
+
+	if _, err := client.CreateOrderWithOptions(context.Background(), order, nil); err != nil {
+		t.Fatalf("CreateOrderWithOptions failed: %v", err)
+	}
+	const negRiskExchange = "0xe2222d279d744050d28e00520010520000310F59"
+	if signer.domain == nil {
+		t.Fatal("signer did not receive typed data")
+	}
+	if signer.domain.VerifyingContract != negRiskExchange {
+		t.Fatalf("verifying contract = %s, want %s", signer.domain.VerifyingContract, negRiskExchange)
+	}
+}
+
 func TestSignOrderPoly1271WrappedSignature(t *testing.T) {
 	signer, err := auth.NewPrivateKeySigner("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80", 137)
 	if err != nil {
@@ -276,6 +325,45 @@ func TestSignOrderPoly1271WrappedSignature(t *testing.T) {
 	}
 	if signed.Order.Signer != funder {
 		t.Fatalf("signer mismatch: got %s want %s", signed.Order.Signer.Hex(), funder.Hex())
+	}
+}
+
+func TestSignOrderPoly1271UsesNegRiskExchangeDomain(t *testing.T) {
+	signer, err := auth.NewPrivateKeySigner("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80", 137)
+	if err != nil {
+		t.Fatalf("failed to create signer: %v", err)
+	}
+	funder := common.HexToAddress("0x9c90cad21cb08320Fb224EAb032dDAE311c017Ef")
+	sigType := int(auth.SignaturePoly1271)
+	order := &clobtypes.Order{
+		Salt:          types.U256{Int: big.NewInt(123)},
+		Maker:         funder,
+		Signer:        funder,
+		TokenID:       types.U256{Int: big.NewInt(123)},
+		MakerAmount:   decimal.NewFromInt(100),
+		TakerAmount:   decimal.NewFromInt(50),
+		Expiration:    types.U256{Int: big.NewInt(0)},
+		Side:          "BUY",
+		SignatureType: &sigType,
+		Timestamp:     1700000000123,
+	}
+
+	signature, err := signPoly1271Order(signer, order, true)
+	if err != nil {
+		t.Fatalf("signPoly1271Order failed: %v", err)
+	}
+	raw, err := hex.DecodeString(strings.TrimPrefix(signature, "0x"))
+	if err != nil {
+		t.Fatalf("decode signature: %v", err)
+	}
+	if len(raw) < 97 {
+		t.Fatalf("wrapped signature length = %d, want at least 97 bytes", len(raw))
+	}
+	gotDomainSeparator := raw[65:97]
+	wantDomainSeparator := poly1271ExchangeDomainSeparator(common.HexToAddress("0xe2222d279d744050d28e00520010520000310F59"), 137)
+	if !strings.EqualFold(hex.EncodeToString(gotDomainSeparator), hex.EncodeToString(wantDomainSeparator)) {
+		t.Fatalf("domain separator = 0x%s, want 0x%s",
+			hex.EncodeToString(gotDomainSeparator), hex.EncodeToString(wantDomainSeparator))
 	}
 }
 

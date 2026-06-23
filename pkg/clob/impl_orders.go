@@ -25,7 +25,7 @@ func (c *clientImpl) CreateOrder(ctx context.Context, order *clobtypes.Order) (c
 }
 
 func (c *clientImpl) CreateOrderWithOptions(ctx context.Context, order *clobtypes.Order, opts *clobtypes.OrderOptions) (clobtypes.OrderResponse, error) {
-	signed, err := c.signOrder(order)
+	signed, err := c.signOrderWithContext(ctx, order)
 	if err != nil {
 		return clobtypes.OrderResponse{}, err
 	}
@@ -49,15 +49,37 @@ func (c *clientImpl) CreateOrderFromSignable(ctx context.Context, order *clobtyp
 }
 
 func (c *clientImpl) signOrder(order *clobtypes.Order) (*clobtypes.SignedOrder, error) {
-	return signOrderWithCreds(c.signer, c.apiKey, order, &c.signatureType, c.funder, c.saltGenerator)
+	return c.signOrderWithContext(context.Background(), order)
+}
+
+func (c *clientImpl) signOrderWithContext(ctx context.Context, order *clobtypes.Order) (*clobtypes.SignedOrder, error) {
+	negRisk, err := c.negRiskForOrder(ctx, order)
+	if err != nil {
+		return nil, err
+	}
+	return signOrderWithCreds(c.signer, c.apiKey, order, &c.signatureType, c.funder, c.saltGenerator, negRisk)
+}
+
+func (c *clientImpl) negRiskForOrder(ctx context.Context, order *clobtypes.Order) (bool, error) {
+	if c == nil || order == nil || order.TokenID.Int == nil || order.TokenID.Int.Sign() == 0 {
+		return false, nil
+	}
+	if c.cache == nil || c.httpClient == nil {
+		return false, nil
+	}
+	resp, err := c.NegRisk(ctx, &clobtypes.NegRiskRequest{TokenID: order.TokenID.Int.String()})
+	if err != nil {
+		return false, fmt.Errorf("neg-risk lookup: %w", err)
+	}
+	return resp.NegRisk, nil
 }
 
 // SignOrder builds an EIP-712 signature for the given order without posting it.
 func SignOrder(signer auth.Signer, apiKey *auth.APIKey, order *clobtypes.Order) (*clobtypes.SignedOrder, error) {
-	return signOrderWithCreds(signer, apiKey, order, nil, nil, nil)
+	return signOrderWithCreds(signer, apiKey, order, nil, nil, nil, false)
 }
 
-func signOrderWithCreds(signer auth.Signer, apiKey *auth.APIKey, order *clobtypes.Order, sigType *auth.SignatureType, funder *types.Address, saltGen SaltGenerator) (*clobtypes.SignedOrder, error) {
+func signOrderWithCreds(signer auth.Signer, apiKey *auth.APIKey, order *clobtypes.Order, sigType *auth.SignatureType, funder *types.Address, saltGen SaltGenerator, negRisk bool) (*clobtypes.SignedOrder, error) {
 	if signer == nil {
 		return nil, auth.ErrMissingSigner
 	}
@@ -140,7 +162,7 @@ func signOrderWithCreds(signer auth.Signer, apiKey *auth.APIKey, order *clobtype
 		if order.Timestamp == 0 {
 			order.Timestamp = time.Now().UnixMilli()
 		}
-		sig, err := signPoly1271Order(signer, order)
+		sig, err := signPoly1271Order(signer, order, negRisk)
 		if err != nil {
 			return nil, fmt.Errorf("sign POLY_1271 order: %w", err)
 		}
@@ -165,7 +187,7 @@ func signOrderWithCreds(signer auth.Signer, apiKey *auth.APIKey, order *clobtype
 		Name:              "Polymarket CTF Exchange",
 		Version:           "2",
 		ChainId:           (*math.HexOrDecimal256)(signer.ChainID()),
-		VerifyingContract: "0xE111180000d2663C0091e4f400237545B87B996B", // V2 CTF Exchange (Mainnet)
+		VerifyingContract: exchangeV2Address(negRisk),
 	}
 
 	typesDef := apitypes.Types{

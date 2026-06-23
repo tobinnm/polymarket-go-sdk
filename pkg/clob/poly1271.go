@@ -15,7 +15,8 @@ import (
 )
 
 const (
-	poly1271ExchangeV2Address     = "0xE111180000d2663C0091e4f400237545B87B996B"
+	ctfExchangeV2Address          = "0xE111180000d2663C0091e4f400237545B87B996B"
+	negRiskExchangeV2Address      = "0xe2222d279d744050d28e00520010520000310F59"
 	poly1271Bytes32Zero           = "0x0000000000000000000000000000000000000000000000000000000000000000"
 	poly1271EIP712DomainType      = "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
 	poly1271OrderType             = "Order(uint256 salt,address maker,address signer,uint256 tokenId,uint256 makerAmount,uint256 takerAmount,uint8 side,uint8 signatureType,uint256 timestamp,bytes32 metadata,bytes32 builder)"
@@ -44,7 +45,14 @@ type poly1271OrderForHash struct {
 	Builder       string
 }
 
-func signPoly1271Order(signer auth.Signer, order *clobtypes.Order) (string, error) {
+func exchangeV2Address(negRisk bool) string {
+	if negRisk {
+		return negRiskExchangeV2Address
+	}
+	return ctfExchangeV2Address
+}
+
+func signPoly1271Order(signer auth.Signer, order *clobtypes.Order, negRisk bool) (string, error) {
 	digestSigner, ok := signer.(digestSigner)
 	if !ok {
 		return "", fmt.Errorf("POLY_1271 signing requires a signer that can sign raw digests")
@@ -73,7 +81,7 @@ func signPoly1271Order(signer auth.Signer, order *clobtypes.Order) (string, erro
 		Builder:       padBytes32(order.Builder),
 	}
 
-	domainSeparator := poly1271ExchangeDomainSeparator(common.HexToAddress(poly1271ExchangeV2Address), signer.ChainID().Int64())
+	domainSeparator := poly1271ExchangeDomainSeparator(common.HexToAddress(exchangeV2Address(negRisk)), signer.ChainID().Int64())
 	contentsHash, err := poly1271OrderStructHash(orderForHash)
 	if err != nil {
 		return "", err
