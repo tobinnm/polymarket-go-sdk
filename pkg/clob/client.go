@@ -135,6 +135,11 @@ type Client interface {
 	PostOrder(ctx context.Context, req *clobtypes.SignedOrder) (clobtypes.OrderResponse, error)
 	// PostOrders submits multiple pre-signed orders in a single batch.
 	PostOrders(ctx context.Context, req *clobtypes.SignedOrders) (clobtypes.PostOrdersResponse, error)
+	// PostOrderWithReceipt submits a pre-signed order and returns the full
+	// placement receipt (success/errorMsg/amounts/settlement evidence).
+	PostOrderWithReceipt(ctx context.Context, req *clobtypes.SignedOrder) (clobtypes.PostOrderReceipt, error)
+	// PostOrdersWithReceipts submits a batch and returns one receipt per order.
+	PostOrdersWithReceipts(ctx context.Context, req *clobtypes.SignedOrders) (clobtypes.PostOrdersReceipts, error)
 	// CancelOrder requests the cancellation of a single open order by its ID.
 	CancelOrder(ctx context.Context, req *clobtypes.CancelOrderRequest) (clobtypes.CancelResponse, error)
 	// CancelOrders requests the cancellation of multiple orders by their IDs.
