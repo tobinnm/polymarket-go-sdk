@@ -488,11 +488,11 @@ type (
 		MakerAmount   types.Decimal `json:"maker_amount"`
 		TakerAmount   types.Decimal `json:"taker_amount"`
 		Expiration    types.U256    `json:"expiration"`
-		Side          string        `json:"side"`                       // BUY/SELL
-		SignatureType *int          `json:"signature_type,omitempty"`   // 0=EOA, 1=Proxy, 2=Safe, 3=Poly1271
-		Timestamp     int64         `json:"timestamp,omitempty"`        // ms since epoch
-		Metadata      string        `json:"metadata,omitempty"`         // 0x-prefixed bytes32 hex
-		Builder       string        `json:"builder,omitempty"`          // 0x-prefixed bytes32 hex builder code
+		Side          string        `json:"side"`                     // BUY/SELL
+		SignatureType *int          `json:"signature_type,omitempty"` // 0=EOA, 1=Proxy, 2=Safe, 3=Poly1271
+		Timestamp     int64         `json:"timestamp,omitempty"`      // ms since epoch
+		Metadata      string        `json:"metadata,omitempty"`       // 0x-prefixed bytes32 hex
+		Builder       string        `json:"builder,omitempty"`        // 0x-prefixed bytes32 hex builder code
 	}
 
 	PriceHistoryPoint struct {
@@ -516,6 +516,23 @@ type (
 		MatchTime       string `json:"match_time,omitempty"`
 		FeeRateBps      string `json:"fee_rate_bps,omitempty"`
 		TransactionHash string `json:"transaction_hash,omitempty"`
+		// MakerOrders is the per-maker-order breakdown of this trade: one
+		// exchange trade can fill several maker orders, each with its own
+		// matched amount. Maker-side accounting requires this breakdown.
+		MakerOrders []TradeMakerOrder `json:"maker_orders,omitempty"`
+	}
+
+	// TradeMakerOrder is one maker order filled by a trade.
+	TradeMakerOrder struct {
+		OrderID       string `json:"order_id"`
+		Owner         string `json:"owner,omitempty"`
+		MakerAddress  string `json:"maker_address,omitempty"`
+		MatchedAmount string `json:"matched_amount,omitempty"`
+		Price         string `json:"price,omitempty"`
+		FeeRateBps    string `json:"fee_rate_bps,omitempty"`
+		AssetID       string `json:"asset_id,omitempty"`
+		Outcome       string `json:"outcome,omitempty"`
+		Side          string `json:"side,omitempty"`
 	}
 
 	Notification struct {
