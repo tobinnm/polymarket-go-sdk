@@ -72,11 +72,15 @@ type DepositWalletParams struct {
 }
 
 type SubmitRequest struct {
-	Type                string              `json:"type"`
-	From                common.Address      `json:"from"`
-	To                  common.Address      `json:"to"`
-	Nonce               string              `json:"nonce"`
-	Signature           string              `json:"signature"`
+	Type      string         `json:"type"`
+	From      common.Address `json:"from"`
+	To        common.Address `json:"to"`
+	Nonce     string         `json:"nonce"`
+	Signature string         `json:"signature"`
+	// Metadata is an opaque caller tag echoed back by the transactions
+	// endpoints (idempotency keys for recovery flows). Not part of the
+	// EIP-712 signature.
+	Metadata            string              `json:"metadata,omitempty"`
 	DepositWalletParams DepositWalletParams `json:"depositWalletParams"`
 }
 
