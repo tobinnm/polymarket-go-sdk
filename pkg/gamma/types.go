@@ -273,6 +273,9 @@ type Market struct {
 	UmaReward             decimal.Decimal `json:"umaReward,omitempty"`
 	FpmmLive              bool    `json:"fpmmLive,omitempty"`
 	ShortOutcomes         string  `json:"shortOutcomes,omitempty"`
+	// Events lists the parent event stubs the market belongs to (the gamma
+	// markets payload nests them; the first entry is the primary event).
+	Events []Event `json:"events,omitempty"`
 	AutomaticallyResolved bool    `json:"automaticallyResolved,omitempty"`
 	OneDayPriceChange     float64 `json:"oneDayPriceChange,omitempty"`
 	OneHourPriceChange    float64 `json:"oneHourPriceChange,omitempty"`
